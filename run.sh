@@ -2,31 +2,55 @@
 set +e
 
 cd $HOME
-if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_APP_NAME" ]
+
+AWSEB_CREDENTIAL_FILE="/home/ubuntu/.elasticbeanstalk/aws_credential_file"
+AWSEB_CONFIG_FILE="$WERCKER_SOURCE_DIR/.elasticbeanstalk/config"
+
+if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_CONFIG_FILE" ]
 then
-    fail "Missing or empty option APP_NAME, please check wercker.yml"
+    if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_APP_NAME" ]
+    then
+        fail "Missing or empty option APP_NAME, please check wercker.yml"
+    fi
+
+    if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_ENV_NAME" ]
+    then
+        fail "Missing or empty option ENV_NAME, please check wercker.yml"
+    fi
+
+    if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION" ]
+    then
+        warn "Missing or empty option REGION, defaulting to us-west-2"
+        WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION="us-west-2"
+    fi
+else
+    TEMP_CONFIG_FILE="$WERCKER_SOURCE_DIR/$WERCKER_ELASTIC_BEANSTALK_DEPLOY_CONFIG_FILE"
+    if [ ! -c $TEMP_CONFIG_FILE ]
+    then
+        fail "Config file '$TEMP_CONFIG_FILE' doesn't exist"
+    fi
+    cp $TEMP_CONFIG_FILE $AWSEB_CONFIG_FILE
 fi
 
-if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_ENV_NAME" ]
-then
-    fail "Missing or empty option ENV_NAME, please check wercker.yml"
+if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_CREDENTIAL_FILE" ]
+    if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_KEY" ]
+    then
+        fail "Missing or empty option KEY, please check wercker.yml"
+    fi
+
+    if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_SECRET" ]
+    then
+        fail "Missing or empty option SECRET, please check wercker.yml"
+    fi
+else
+    TEMP_CREDENTIAL_FILE="$WERCKER_SOURCE_DIR/$WERCKER_ELASTIC_BEANSTALK_DEPLOY_CREDENTIAL_FILE"
+    if [ ! -c $TEMP_CREDENTIAL_FILE ]
+    then
+        fail "Credential file '$TEMP_CREDENTIAL_FILE' doesn't exist"
+    fi
+    cp $TEMP_CREDENTIAL_FILE $AWSEB_CREDENTIAL_FILE
 fi
 
-if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_KEY" ]
-then
-    fail "Missing or empty option KEY, please check wercker.yml"
-fi
-
-if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_SECRET" ]
-then
-    fail "Missing or empty option SECRET, please check wercker.yml"
-fi
-
-if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION" ]
-then
-    warn "Missing or empty option REGION, defaulting to us-west-2"
-    WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION="us-west-2"
-fi
 
 if [ -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_DEBUG" ]
 then
@@ -46,25 +70,30 @@ fi
 debug "Change back to the source dir.";
 cd $WERCKER_SOURCE_DIR
 
-AWSEB_CREDENTIAL_FILE="/home/ubuntu/.elasticbeanstalk/aws_credential_file"
-AWSEB_CONFIG_FILE="$WERCKER_SOURCE_DIR/.elasticbeanstalk/config"
-AWSEB_DEVTOOLS_ENDPOINT="git.elasticbeanstalk.$WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION.amazonaws.com"
-AWSEB_SERVICE_ENDPOINT="https://elasticbeanstalk.$WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION.amazonaws.com"
-
-debug "Setting up credentials."
-cat <<EOT >> $AWSEB_CREDENTIAL_FILE
+#Generate credential file if needed
+if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_CREDENTIAL_FILE" ]
+then
+    debug "Setting up credentials."
+    cat <<EOT >> $AWSEB_CREDENTIAL_FILE
 AWSAccessKeyId=$WERCKER_ELASTIC_BEANSTALK_DEPLOY_KEY
 AWSSecretKey=$WERCKER_ELASTIC_BEANSTALK_DEPLOY_SECRET
 EOT
 
-if [ -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_DEBUG" ]
-then
-    debug "Dumping Credential file."
-    cat $AWSEB_CREDENTIAL_FILE
+    if [ -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_DEBUG" ]
+    then
+        debug "Dumping Credential file."
+        cat $AWSEB_CREDENTIAL_FILE
+    fi
 fi
 
-debug "Setting up config file."
-cat <<EOT >> $AWSEB_CONFIG_FILE
+#Generate config file if needed
+if [ ! -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_CONFIG_FILE" ]
+then
+    AWSEB_DEVTOOLS_ENDPOINT="git.elasticbeanstalk.$WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION.amazonaws.com"
+    AWSEB_SERVICE_ENDPOINT="https://elasticbeanstalk.$WERCKER_ELASTIC_BEANSTALK_DEPLOY_REGION.amazonaws.com"
+
+    debug "Setting up config file."
+    cat <<EOT >> $AWSEB_CONFIG_FILE
 [global]
 ApplicationName=$WERCKER_ELASTIC_BEANSTALK_DEPLOY_APP_NAME
 DevToolsEndpoint=$AWSEB_DEVTOOLS_ENDPOINT
@@ -79,15 +108,16 @@ ApplicationVersionName=$WERCKER_GIT_BRANCH
 EnvironmentName=$WERCKER_ELASTIC_BEANSTALK_DEPLOY_ENV_NAME
 InstanceProfileName=aws-elasticbeanstalk-ec2-role
 EOT
-if [ $? -ne "0" ]
-then
-    fail "Unable to set up config file."
-fi
+    if [ $? -ne "0" ]
+    then
+        fail "Unable to set up config file."
+    fi
 
-if [ -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_DEBUG" ]
-then
-    debug "Dumping config file."
-    cat $AWSEB_CONFIG_FILE
+    if [ -n "$WERCKER_ELASTIC_BEANSTALK_DEPLOY_DEBUG" ]
+    then
+        debug "Dumping config file."
+        cat $AWSEB_CONFIG_FILE
+    fi
 fi
 
 debug "Checking if eb exists and can connect."
